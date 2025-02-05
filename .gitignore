@@ -19,5 +19,8 @@
 /.venv*
 /.pioenvs
 
+# Python build
+*.egg-info/
+
 # Output
 .pio/

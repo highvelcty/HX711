@@ -7,7 +7,7 @@
 # Configuration
 # -------------
 
-$(eval venvpath     := .venv2)
+$(eval venvpath     := venv)
 $(eval pip          := $(venvpath)/bin/pip)
 $(eval python       := $(venvpath)/bin/python)
 $(eval platformio   := $(venvpath)/bin/platformio)
@@ -59,4 +59,10 @@ ci-basic:
 	$(platformio) ci --board=$(board) --lib="." examples/HX711_basic_example --verbose
 
 clean:
-	$(platformio) run -t clean
+	platformio run -t clean
+
+uno:
+	platformio run --environment uno
+
+upload-uno:
+	platformio run -t upload -e uno
