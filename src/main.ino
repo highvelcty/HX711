@@ -7,11 +7,11 @@
 const int LOADCELL_DOUT_PIN = 2;
 const int LOADCELL_SCK_PIN = 3;
 
-enum Slip: char {
-    SLIP_END = '\xC0',
-    SLIP_ESC = '\xDB',
-    SLIP_ESC_END = '\xDC',
-    SLIP_ESC_ESC = '\xDD'
+enum Slip: byte {
+    SLIP_END = 0xC0,
+    SLIP_ESC = 0xDB,
+    SLIP_ESC_END = 0xDC,
+    SLIP_ESC_ESC = 0xDD
 };
 
 enum Cmd: unsigned int {
@@ -61,8 +61,16 @@ void slip_send(byte* buf, unsigned int buf_len){
 unsigned int slip_recv(byte a_byte){
     // Returns the number of bytes of a received packet. The return length will be zero for
     // incomplete packets.
+
+    char outbuf[16];
+    itoa(a_byte, &outbuf[0], 10);
+    Serial.write("emey recv: ");
+    // Serial.write(outbuf);
+    Serial.print(a_byte);
+    Serial.write("\n");
+
     unsigned int len = 0;
-    if (a_byte == SLIP_END){
+    if (a_byte == SLIP_END){        
         len = serial_recv_ptr - &serial_recv_buf[0];
         serial_recv_ptr = &serial_recv_buf[0];
     }
@@ -168,6 +176,9 @@ void loop() {
         delay(MAIN_POLLING_LOOP_INTERVAL_MS);
     }
     packet_len = slip_recv(Serial.read());
+    Serial.write("emey packet_len: ");
+    Serial.print(packet_len);
+    Serial.write("\n");
     if (packet_len >= sizeof(CmdHdr)){
         hdr = (CmdHdr*)serial_recv_buf;
         if (hdr->cmd == CMD_LOOPBACK){
