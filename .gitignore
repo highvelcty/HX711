@@ -16,6 +16,7 @@
 /.idea
 
 # PlatformIO virtualenv and pioenv
+/venv/
 /.venv*
 /.pioenvs
 
