@@ -1,46 +1,158 @@
 #include "HX711.h"
+#include "slip.h"
 
+#define PACKET_CHECKSUM_BYTES 2
+#define PACKET_MIN_BYTES sizeof(PacketHdr) + PACKET_CHECKSUM_BYTES
 #define MAIN_POLLING_LOOP_INTERVAL_MS 1
-#define SERIAL_RECV_BYTES 64
+#define SAMPLE_RETRIES 5
+#define SAMPLE_RETRY_DELAY_MS 100
+// #define SERIAL_RECV_ALLOC_BYTES 64
+#define SERIAL_SEND_ALLOC_BYTES 64
 
 // HX711 circuit wiring
 const int LOADCELL_DOUT_PIN = 2;
 const int LOADCELL_SCK_PIN = 3;
 
-enum Slip: byte {
-    SLIP_END = 0xC0,
-    SLIP_ESC = 0xDB,
-    SLIP_ESC_END = 0xDC,
-    SLIP_ESC_ESC = 0xDD
-};
-
-enum Cmd: unsigned int {
-    CMD_LOOPBACK = 0
-};
-
-struct CmdHdr{
-    Cmd cmd;
-};
-
-struct CmdRtn{
-    CmdHdr hdr;
-    union {
-        double double_value;
-        long long_value;
-        float float_value;
-    };
-};
-
 HX711 scale;
-char serial_recv_buf[SERIAL_RECV_BYTES];
-char* serial_recv_ptr = serial_recv_buf;
-bool within_escape = false;
+
+enum Cmd: uint16_t {
+    CMD_LOOPBACK = 0,
+    CMD_SAMPLE = 1
+};
+
+struct PacketHdr {
+    uint16_t command;
+};
+
+struct BaseCommand { };
+
+struct BaseResponse { };
+
+struct RespSample {
+    long sample;
+};
+
+class SerialRecv {
+    public:
+        uint8_t buf[SERIAL_RECV_ALLOC_BYTES];
+        uint8_t* buf_ptr = buf;
+        bool within_escape = false;
+
+        uint16_t buf_len() {
+            return this->buf_ptr - this->buf;
+        }
+
+        void reset() {
+             this->buf_ptr = this->buf;
+             this->within_escape = false;
+        }
+};
+SerialRecv serial_recv;
+
+uint8_t serial_send[SERIAL_SEND_ALLOC_BYTES];
 
 void setup() {
-  memset(serial_recv_buf, 0, sizeof(serial_recv_buf));
-  Serial.begin(115200);
-  scale.begin(LOADCELL_DOUT_PIN, LOADCELL_SCK_PIN);
+    serial_recv.reset();
+    Serial.begin(115200);
+    scale.begin(LOADCELL_DOUT_PIN, LOADCELL_SCK_PIN);
 }
+
+
+PacketHdr* deserialize_to_packet() {
+    PacketHdr* packet_hdr = NULL;
+    uint16_t buf_len = serial_recv.buf_len();
+    uint16_t calc_checksum = 0;
+    uint16_t checksum = 0;
+
+    if (buf_len >= PACKET_MIN_BYTES) {
+        packet_hdr = (PacketHdr*)&serial_recv.buf[0];
+        checksum = *(uint16_t*)&serial_recv.buf[buf_len - PACKET_CHECKSUM_BYTES];
+        for (uint16_t byte_idx = 0; byte_idx < buf_len - PACKET_CHECKSUM_BYTES; ++byte_idx){
+            calc_checksum += serial_recv.buf[byte_idx];
+        }
+
+        if (calc_checksum == checksum) {
+            return packet_hdr;
+        }
+        else {
+            return NULL;
+        }
+    }
+    else {
+        return NULL;
+    }
+}
+
+
+void execute(PacketHdr* packet_hdr) {
+    if (packet_hdr->command == CMD_LOOPBACK) {
+        slip_send(serial_recv.buf, serial_recv.buf_len());
+        slip_send_end();
+    }
+    else if (packet_hdr->command == CMD_SAMPLE) {
+        RespSample* resp = (RespSample*)&serial_send[0];
+
+        if (sample(&resp->sample)){
+            slip_send_resp((Cmd)packet_hdr->command, (byte*)resp, sizeof(RespSample));
+        }
+    }
+    return NULL;
+}
+
+
+void loop() {
+    PacketHdr* packet_hdr;
+
+    while (!Serial.available()){
+        delay(MAIN_POLLING_LOOP_INTERVAL_MS);
+    }
+
+    if (slip_recv(Serial.read())){
+        packet_hdr = deserialize_to_packet();
+        if (packet_hdr != NULL){
+            execute(packet_hdr);
+        }
+        serial_recv.reset();
+    }
+}
+
+bool sample(long* sample){
+    for (int retry = 0; retry < SAMPLE_RETRIES; ++retry){
+        if(retry > 0){
+            delay(SAMPLE_RETRY_DELAY_MS);
+        }
+        if (scale.is_ready()) {
+            *sample = scale.read();
+            return true;
+        }
+    }
+    return false;
+}
+
+bool slip_recv(byte a_byte){
+    if (a_byte == SLIP_END){
+        return true;
+    }
+    else if (a_byte == SLIP_ESC){
+        serial_recv.within_escape = true;
+    }
+    else{
+        if (serial_recv.within_escape){
+            serial_recv.within_escape = false;
+            if (a_byte == SLIP_ESC_END){
+                *serial_recv.buf_ptr++ = SLIP_END;
+            }
+            else if (a_byte == SLIP_ESC_ESC){
+                *serial_recv.buf_ptr++ = SLIP_ESC;
+            }
+        }
+        else{
+            *serial_recv.buf_ptr++ = a_byte;
+        }
+    }
+    return false;
+}
+
 
 void slip_send(byte* buf, unsigned int buf_len){
     for (unsigned int idx = 0; idx < buf_len; ++idx){
@@ -58,131 +170,22 @@ void slip_send(byte* buf, unsigned int buf_len){
     }
 }
 
-unsigned int slip_recv(byte a_byte){
-    // Returns the number of bytes of a received packet. The return length will be zero for
-    // incomplete packets.
-
-    char outbuf[16];
-    itoa(a_byte, &outbuf[0], 10);
-    Serial.write("emey recv: ");
-    // Serial.write(outbuf);
-    Serial.print(a_byte);
-    Serial.write("\n");
-
-    unsigned int len = 0;
-    if (a_byte == SLIP_END){        
-        len = serial_recv_ptr - &serial_recv_buf[0];
-        serial_recv_ptr = &serial_recv_buf[0];
-    }
-    else if (a_byte == SLIP_ESC){
-        within_escape = true;
-    }
-    else{
-        if (within_escape){
-            within_escape = false;
-            if (a_byte == SLIP_ESC_END){
-                *serial_recv_ptr++ = SLIP_END;
-            }
-            else if (a_byte == SLIP_ESC_ESC){
-                *serial_recv_ptr++ = SLIP_ESC;
-            }
-        }
-        else{
-            *serial_recv_ptr++ = a_byte;
-        }
-    }
-    return len;
+void slip_send_end(){
+    Serial.write(SLIP_END);
 }
 
+void slip_send_resp(Cmd cmd, byte* resp, uint16_t resp_len) {
+    PacketHdr packet_hdr;
+    uint16_t checksum = cmd;
 
+    packet_hdr.command = cmd;
 
-// SerialRecv* slip_decode(byte* buf){
-//     unsigned int writing_idx = 0;
-//     for(unsigned int reading_idx = 0; reading_idx < SERIAL_RECV_BYTES; ++reading_idx){
-//         if (buf[reading_idx] == END){
-//             break;
-//         }
-//         else if (buf[reading_idx] == ESC){
-//             if (buf[reading_idx+1] == ESC_END){
-//                 buf[writing_idx] = END;
-//             }
-//             else if (buf[reading_idx+1] == ESC_ESC){
-//                 buf[writing_idx] = ESC;
-//             }
-//             // Increment past the escaping
-//             ++reading_idx;
-//         }
-//         else {
-//             buf[writing_idx] = buf[reading_idx];
-//         }
-//         ++writing_idx;
-//     }
-//     return (SerialRecv*)buf;
-// }
-//
-//
-// void loop() {
-//     while (!Serial.available()){
-//         delay(MAIN_POLLING_LOOP_INTERVAL_MS);
-//     }
-//     *serial_recv_ptr = Serial.read();
-//     if (*serial_recv_ptr == SLIP_END){
-//         *serial_recv_ptr = '\0';
-//         if (!strcmp("sample", serial_recv)){
-//             sample();
-//         }
-//         else if (!strcmp("loopback", serial_recv)) {
-//             Serial.print(serial_recv);
-//             Serial.write(SLIP_END);
-//         }
-//         else{
-//             Serial.print("Unrecognized cmd: ");
-//             Serial.print(serial_recv);
-//             Serial.write(SLIP_END);
-//         }
-//         serial_recv_ptr = &serial_recv[0];
-//     }
-//     else{
-//         ++serial_recv_ptr;
-//     }
-// }
-//
-// void sample(){
-//     if (scale.wait_ready_retry(10, 100)){
-//         long reading = scale.read();
-//     }
-// }
-//
-//
-// void loop() {
-//
-//   if (scale.is_ready()) {
-//     long reading = scale.read();
-//     Serial.print("HX711 reading: ");
-//     Serial.println(reading);
-//   } else {
-//     Serial.println("HX711 not found.");
-//   }
-//
-//   delay(1000);
-//
-// }
-
-void loop() {
-    unsigned int packet_len = 0;
-    CmdHdr* hdr;
-
-    while (!Serial.available()){
-        delay(MAIN_POLLING_LOOP_INTERVAL_MS);
+    for (uint16_t byte_idx = 0; byte_idx < resp_len; ++byte_idx){
+        checksum += resp[byte_idx];
     }
-    packet_len = slip_recv(Serial.read());
-    Serial.write("emey packet_len: ");
-    Serial.print(packet_len);
-    Serial.write("\n");
-    if (packet_len >= sizeof(CmdHdr)){
-        hdr = (CmdHdr*)serial_recv_buf;
-        if (hdr->cmd == CMD_LOOPBACK){
-            slip_send((byte*)hdr, sizeof(CmdHdr));
-        }
-    }
+
+    slip_send((byte*)&packet_hdr, sizeof(packet_hdr));
+    slip_send(resp, resp_len);
+    slip_send((byte*)&checksum, sizeof(checksum));
+    slip_send_end();
 }
