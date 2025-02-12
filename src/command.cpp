@@ -20,7 +20,7 @@ void execute(PacketHdr* packet_hdr) {
 
  bool sample(long& sample) {
     if (scale->wait_ready_retry(WAIT_READY_RETRIES, WAIT_READY_RETRY_DELAY_MS)){
-        sample = scale->read_average(1);
+        sample = scale->read_average(7);
         return true;
     }
     return false;
