@@ -4,7 +4,6 @@
 #include <Arduino.h>
 #include "HX711.h"
 #include "protocol/network.h"
-#include "protocol/transport.h"
 
 #define WAIT_READY_RETRIES 5
 #define WAIT_READY_RETRY_DELAY_MS 100
@@ -22,51 +21,58 @@ enum RespType: uint16_t {
     RESP_TYPE_BYTE = 1,
     RESP_TYPE_LONG = 2,
     RESP_TYPE_FLOAT = 3,
-    RESP_TYPE_DOUBLE = 4
+    RESP_TYPE_DOUBLE = 4,
+    RESP_TYPE_ERROR = 0xFFFF,
 };
 
-struct RespVoid {
-    PacketHdr header;
-    RespVoid() {
-        this->header.type = RESP_TYPE_VOID;
-    };
+enum Error: uint32_t {
+    ERROR_NONE = 0,
+    ERROR_CMD_DESERIALIZATION_BUFFER_UNDERFLOW = 1,
+    ERROR_UNRECOGNIZED_COMMAND = 2,
 };
 
-struct RespByte {
-    PacketHdr header;
+struct BaseCmd : PacketHdr {};
+struct BaseResp : PacketHdr {
+    BaseResp(RespType resp_type) : PacketHdr(resp_type) {};
+};
+struct BaseCmdWithTimesParam : BaseCmd {
+    uint8_t times;
+};
+
+struct CmdSample : BaseCmdWithTimesParam {};
+
+struct RespVoid : BaseResp {
+    RespVoid() : BaseResp(RESP_TYPE_VOID) {};
+};
+
+struct RespByte : BaseResp {
     uint8_t data;
-    RespByte() {
-        this->header.type = RESP_TYPE_BYTE;
-    };
+    RespByte() : BaseResp(RESP_TYPE_BYTE) {};
 };
 
-struct RespLong {
-    PacketHdr header;
+struct RespLong : BaseResp {
     int32_t data;
-    RespLong() {
-        this->header.type = RESP_TYPE_LONG;
-    };
+    RespLong() : BaseResp(RESP_TYPE_LONG) {};
 };
 
-struct RespFloat {
-    PacketHdr header;
+struct RespFloat : BaseResp {
     float data;
-    RespFloat() {
-        this->header.type = RESP_TYPE_FLOAT;
-    };
+    RespFloat() : BaseResp(RESP_TYPE_FLOAT) {};
 };
 
-struct RespDouble {
-    PacketHdr header;
+struct RespDouble : BaseResp {
     double data;
-    RespDouble() {
-        this->header.type = RESP_TYPE_DOUBLE;
-    };
+    RespDouble() : BaseResp(RESP_TYPE_DOUBLE) {};
+};
+
+struct RespError : BaseResp {
+    Error error;
+    RespError() : BaseResp(RESP_TYPE_ERROR) {};
 };
 
 extern HX711* scale;
 
 void execute(PacketHdr* packet_hdr);
-bool sample(long& sample);
+bool sample(uint8_t times, long& sample);
 
 #endif /* command_h */

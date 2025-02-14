@@ -1,41 +1,41 @@
 #include "datalink.h"
 
-uint16_t SerialRecv::buf_len() {
+uint16_t SlipBuf::buf_len() {
     return this->buf_ptr - this->buf;
 }
 
-void SerialRecv::reset() {
+void SlipBuf::reset() {
     this->buf_ptr = this->buf;
     this->within_escape = false;
 }
 
 
-bool slip_recv(byte a_byte) {
+bool recv_slip(byte a_byte) {
     if (a_byte == SLIP_END){
         return true;
     }
     else if (a_byte == SLIP_ESC){
-        serial_recv->within_escape = true;
+        slip_buf->within_escape = true;
     }
     else{
-        if (serial_recv->within_escape){
-            serial_recv->within_escape = false;
+        if (slip_buf->within_escape){
+            slip_buf->within_escape = false;
             if (a_byte == SLIP_ESC_END){
-                *serial_recv->buf_ptr++ = SLIP_END;
+                *slip_buf->buf_ptr++ = SLIP_END;
             }
             else if (a_byte == SLIP_ESC_ESC){
-                *serial_recv->buf_ptr++ = SLIP_ESC;
+                *slip_buf->buf_ptr++ = SLIP_ESC;
             }
         }
         else{
-            *serial_recv->buf_ptr++ = a_byte;
+            *slip_buf->buf_ptr++ = a_byte;
         }
     }
     return false;
 }
 
 
-void slip_send(byte* buf, unsigned int buf_len) {
+void send_slip(byte* buf, unsigned int buf_len) {
     for (unsigned int idx = 0; idx < buf_len; ++idx){
         if (buf[idx] == SLIP_END){
             Serial.write(SLIP_ESC);
@@ -52,8 +52,8 @@ void slip_send(byte* buf, unsigned int buf_len) {
 }
 
 
-void slip_send_end(){
+void send_slip_end(){
     Serial.write(SLIP_END);
 }
 
-SerialRecv* serial_recv = new SerialRecv();
+SlipBuf* slip_buf = new SlipBuf();

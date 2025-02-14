@@ -3,7 +3,7 @@
 
 #include <Arduino.h>
 
-#define SERIAL_RECV_ALLOC_BYTES 64
+#define SLIP_BUF_ALLOC_BYTES 64
 
 enum Slip {
     SLIP_END = 0xC0,
@@ -12,9 +12,9 @@ enum Slip {
     SLIP_ESC_ESC = 0xDD
 };
 
-class SerialRecv {
+class SlipBuf {
     public:
-        uint8_t buf[SERIAL_RECV_ALLOC_BYTES];
+        uint8_t buf[SLIP_BUF_ALLOC_BYTES];
         uint8_t* buf_ptr = buf;
         bool within_escape = false;
 
@@ -22,10 +22,10 @@ class SerialRecv {
         void reset();
 };
 
-bool slip_recv(byte a_byte);
-void slip_send(byte* buf, unsigned int buf_len);
-void slip_send_end();
+bool recv_slip(byte a_byte);
+void send_slip(byte* buf, unsigned int buf_len);
+void send_slip_end();
 
-extern SerialRecv* serial_recv;
+extern SlipBuf* slip_buf;
 
 #endif /* datalink_h */
