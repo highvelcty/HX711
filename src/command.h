@@ -13,7 +13,17 @@ const int LOADCELL_SCK_PIN = 3;
 
 enum Cmd: uint16_t {
     CMD_LOOPBACK = 0,
-    CMD_SAMPLE = 1
+    CMD_READ_AVERAGE = 1,
+    CMD_SET_GAIN = 2,
+    CMD_GET_VALUE = 3,
+    CMD_GET_UNITS = 4,
+    CMD_TARE = 5,
+    CMD_SET_SCALE = 6,
+    CMD_GET_SCALE = 7,
+    CMD_SET_OFFSET = 8,
+    CMD_GET_OFFSET = 9,
+    CMD_POWER_DOWN = 10,
+    CMD_POWER_UP = 11
 };
 
 enum RespType: uint16_t {
@@ -29,6 +39,7 @@ enum Error: uint32_t {
     ERROR_NONE = 0,
     ERROR_CMD_DESERIALIZATION_BUFFER_UNDERFLOW = 1,
     ERROR_UNRECOGNIZED_COMMAND = 2,
+    ERROR_HX711_NOT_READY = 3,
 };
 
 struct BaseCmd : PacketHdr {};
@@ -39,7 +50,21 @@ struct BaseCmdWithTimesParam : BaseCmd {
     uint8_t times;
 };
 
-struct CmdSample : BaseCmdWithTimesParam {};
+struct CmdReadAverage : BaseCmdWithTimesParam {};
+
+struct CmdSetGain : BaseCmd {
+    uint8_t gain;
+};
+
+struct CmdGetUnits : BaseCmdWithTimesParam {};
+
+struct CmdTare : BaseCmdWithTimesParam {};
+
+struct CmdSetScale : BaseCmd {
+    float scale;
+};
+
+struct CmdGetScale : BaseCmd {};
 
 struct RespVoid : BaseResp {
     RespVoid() : BaseResp(RESP_TYPE_VOID) {};
@@ -73,6 +98,8 @@ struct RespError : BaseResp {
 extern HX711* scale;
 
 void execute(PacketHdr* packet_hdr);
-bool sample(uint8_t times, long& sample);
+bool wait_and_get_units(uint8_t times, long& data);
+bool wait_and_read_average(uint8_t times, long& data);
+
 
 #endif /* command_h */
