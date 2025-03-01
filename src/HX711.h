@@ -18,7 +18,7 @@
 
 class HX711
 {
-	private:
+	protected:
 		byte PD_SCK;	// Power Down and Serial Clock Input Pin
 		byte DOUT;		// Serial Data Output Pin
 		byte GAIN;		// amplification factor

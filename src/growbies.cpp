@@ -1,6 +1,8 @@
 #include "command.h"
+#include "constants.h"
+#include "growbies.h"
 
-HX711* scale = new HX711;
+Growbies* growbies = new Growbies();
 
 template <typename T>
 
@@ -17,7 +19,11 @@ bool check_and_respond_to_deserialization_underflow(const T& structure) {
 
 }
 
-void execute(PacketHdr* packet_hdr) {
+void Growbies::begin(byte channel, byte gain){
+    HX711::begin(get_HX711_dout_pin(this->channel), ARDUINO_HX711_SCK, gain);
+}
+
+void Growbies::execute(PacketHdr* packet_hdr) {
     if (packet_hdr->type == CMD_LOOPBACK) {
         send_slip(slip_buf->buf, slip_buf->buf_len());
         send_slip_end();
@@ -41,10 +47,10 @@ void execute(PacketHdr* packet_hdr) {
         CmdSetGain* cmd = (CmdSetGain*)slip_buf->buf;
         if (!check_and_respond_to_deserialization_underflow(*cmd)){
             RespVoid resp;
-            scale->set_gain(cmd->gain);
+            this->set_gain(cmd->gain);
             // The first read after setting the gain applies the gain. The value returned looks
             // off from experimentation and is discarded.
-            scale->read();
+            this->read();
             send_packet(resp);
          }
     }
@@ -67,7 +73,7 @@ void execute(PacketHdr* packet_hdr) {
         CmdTare* cmd = (CmdTare*)slip_buf->buf;
         if (!check_and_respond_to_deserialization_underflow(*cmd)){
             RespVoid resp;
-            scale->tare(cmd->times);
+            this->tare(cmd->times);
             send_packet(resp);
          }
     }
@@ -75,7 +81,7 @@ void execute(PacketHdr* packet_hdr) {
         CmdSetScale* cmd = (CmdSetScale*)slip_buf->buf;
         if (!check_and_respond_to_deserialization_underflow(*cmd)){
             RespVoid resp;
-            scale->set_scale(cmd->scale);
+            this->set_scale(cmd->scale);
             send_packet(resp);
          }
     }
@@ -83,9 +89,34 @@ void execute(PacketHdr* packet_hdr) {
         CmdGetScale* cmd = (CmdGetScale*)slip_buf->buf;
         if (!check_and_respond_to_deserialization_underflow(*cmd)){
             RespFloat resp;
-            resp.data = scale->get_scale();
+            resp.data = this->get_scale();
             send_packet(resp);
          }
+    }
+    else if (packet_hdr->type == CMD_POWER_UP) {
+        RespVoid resp;
+        this->power_up();
+        send_packet(resp);
+    }
+    else if (packet_hdr->type == CMD_POWER_DOWN) {
+        RespVoid resp;
+        this->power_down();
+        send_packet(resp);
+    }
+    else if (packet_hdr->type == CMD_SET_CHANNEL) {
+        RespVoid resp;
+        CmdSetChannel* cmd = (CmdSetChannel*)slip_buf->buf;
+        if (!check_and_respond_to_deserialization_underflow(*cmd)){
+            RespFloat resp;
+            this->channel = cmd->channel;
+            this->begin();
+            send_packet(resp);
+         }
+    }
+    else if (packet_hdr->type == CMD_GET_CHANNEL) {
+        RespByte resp;
+        resp.data = this->channel;
+        send_packet(resp);
     }
     else{
         RespError resp;
@@ -94,17 +125,17 @@ void execute(PacketHdr* packet_hdr) {
     }
 }
 
-bool wait_and_get_units(uint8_t times, long& data) {
-    if (scale->wait_ready_retry(WAIT_READY_RETRIES, WAIT_READY_RETRY_DELAY_MS)){
-        data = scale->get_units(times);
+bool Growbies::wait_and_get_units(uint8_t times, long& data) {
+    if (this->wait_ready_retry(WAIT_READY_RETRIES, WAIT_READY_RETRY_DELAY_MS)){
+        data = this->get_units(times);
         return true;
     }
     return false;
 }
 
-bool wait_and_read_average(uint8_t times, long& data) {
-    if (scale->wait_ready_retry(WAIT_READY_RETRIES, WAIT_READY_RETRY_DELAY_MS)){
-        data = scale->read_average(times);
+bool Growbies::wait_and_read_average(uint8_t times, long& data) {
+    if (this->wait_ready_retry(WAIT_READY_RETRIES, WAIT_READY_RETRY_DELAY_MS)){
+        data = this->read_average(times);
         return true;
     }
     return false;

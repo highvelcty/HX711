@@ -1,15 +1,10 @@
 #ifndef command_h
 #define command_h
 
-#include <Arduino.h>
-#include "HX711.h"
 #include "protocol/network.h"
 
 #define WAIT_READY_RETRIES 5
 #define WAIT_READY_RETRY_DELAY_MS 100
-
-const int LOADCELL_DOUT_PIN = 2;
-const int LOADCELL_SCK_PIN = 3;
 
 enum Cmd: uint16_t {
     CMD_LOOPBACK = 0,
@@ -23,7 +18,9 @@ enum Cmd: uint16_t {
     CMD_SET_OFFSET = 8,
     CMD_GET_OFFSET = 9,
     CMD_POWER_DOWN = 10,
-    CMD_POWER_UP = 11
+    CMD_POWER_UP = 11,
+    CMD_SET_CHANNEL = 12,
+    CMD_GET_CHANNEL = 13,
 };
 
 enum RespType: uint16_t {
@@ -66,6 +63,16 @@ struct CmdSetScale : BaseCmd {
 
 struct CmdGetScale : BaseCmd {};
 
+struct CmdPowerUp : BaseCmd {};
+
+struct CmdPowerDown : BaseCmd {};
+
+struct CmdSetChannel : BaseCmd {
+    uint8_t channel;
+};
+
+struct CmdGetChannel : BaseCmd {};
+
 struct RespVoid : BaseResp {
     RespVoid() : BaseResp(RESP_TYPE_VOID) {};
 };
@@ -94,12 +101,5 @@ struct RespError : BaseResp {
     Error error;
     RespError() : BaseResp(RESP_TYPE_ERROR) {};
 };
-
-extern HX711* scale;
-
-void execute(PacketHdr* packet_hdr);
-bool wait_and_get_units(uint8_t times, long& data);
-bool wait_and_read_average(uint8_t times, long& data);
-
 
 #endif /* command_h */
