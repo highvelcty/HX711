@@ -9,6 +9,10 @@
 **/
 #include <Arduino.h>
 #include "HX711.h"
+#include "constants.h"
+
+#define ARDUINO_MINI_PRO_3V3_8MHZ
+#define SCK_TOGGLE_DELAY_MICROSECONDS 1
 
 // TEENSYDUINO has a port of Dean Camera's ATOMIC_BLOCK macros for AVR to ARM Cortex M3.
 #define HAS_ATOMIC_BLOCK (defined(ARDUINO_ARCH_AVR) || defined(TEENSYDUINO))
@@ -25,7 +29,7 @@
     ( \
     ARCH_ESPRESSIF || \
     defined(ARDUINO_ARCH_SAM)     || defined(ARDUINO_ARCH_SAMD) || \
-    defined(ARDUINO_ARCH_STM32)   || defined(TEENSYDUINO) \
+    defined(ARDUINO_ARCH_STM32)   || defined(TEENSYDUINO) || defined(ARDUINO_MINI_PRO_3V3_8MHZ) \
     )
 
 #if HAS_ATOMIC_BLOCK
@@ -43,16 +47,18 @@
 uint8_t shiftInSlow(uint8_t dataPin, uint8_t clockPin, uint8_t bitOrder) {
     uint8_t value = 0;
     uint8_t i;
+    uint8_t data_in = 0;
 
     for(i = 0; i < 8; ++i) {
         digitalWrite(clockPin, HIGH);
-        delayMicroseconds(1);
+        delayMicroseconds(SCK_TOGGLE_DELAY_MICROSECONDS);
+        data_in = digitalRead(dataPin);
         if(bitOrder == LSBFIRST)
-            value |= digitalRead(dataPin) << i;
+            value |= data_in << i;
         else
-            value |= digitalRead(dataPin) << (7 - i);
+            value |= data_in << (7 - i);
         digitalWrite(clockPin, LOW);
-        delayMicroseconds(1);
+        delayMicroseconds(SCK_TOGGLE_DELAY_MICROSECONDS);
     }
     return value;
 }
@@ -105,9 +111,9 @@ void HX711::set_gain(byte gain) {
 }
 
 long HX711::read() {
-
-	// Wait for the chip to become ready.
-	wait_ready();
+    if (!this->wait_ready_retry(WAIT_READY_RETRIES, WAIT_READY_RETRY_DELAY_MS)){
+        return ERROR_HX711_NOT_READY;
+    }
 
 	// Define structures for reading data into.
 	unsigned long value = 0;
@@ -152,12 +158,12 @@ long HX711::read() {
 	// Set the channel and the gain factor for the next reading using the clock pin.
 	for (unsigned int i = 0; i < GAIN; i++) {
 		digitalWrite(PD_SCK, HIGH);
-		#if ARCH_ESPRESSIF
-		delayMicroseconds(1);
+		#if ARCH_ESPRESSIF || FAST_CPU
+		delayMicroseconds(SCK_TOGGLE_DELAY_MICROSECONDS);
 		#endif
 		digitalWrite(PD_SCK, LOW);
-		#if ARCH_ESPRESSIF
-		delayMicroseconds(1);
+		#if ARCH_ESPRESSIF || FAST_CPU
+		delayMicroseconds(SCK_TOGGLE_DELAY_MICROSECONDS);
 		#endif
 	}
 
