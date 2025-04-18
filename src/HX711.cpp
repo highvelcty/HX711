@@ -12,7 +12,6 @@
 #include "constants.h"
 
 #define ARDUINO_MINI_PRO_3V3_8MHZ
-#define SCK_TOGGLE_DELAY_MICROSECONDS 1
 
 // TEENSYDUINO has a port of Dean Camera's ATOMIC_BLOCK macros for AVR to ARM Cortex M3.
 #define HAS_ATOMIC_BLOCK (defined(ARDUINO_ARCH_AVR) || defined(TEENSYDUINO))

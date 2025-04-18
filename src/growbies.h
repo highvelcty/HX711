@@ -9,17 +9,23 @@
 class Growbies : protected HX711 {
     public:
         const int sensor_count;
-        Growbies(): sensor_count(4){};
+
+
+        Growbies(int sensor_count = 4);
+        ~Growbies();
+
         void execute(PacketHdr* packet_hdr);
         void begin(byte channel = 0, byte gain = 128);
 
     private:
+        MassDataPoint* mass_data_points;
         byte channel = 0;
-
+		MassDataPoint* read_all();
 		// Reads data from the chip the requested number of times. The median is found and then all
 		// samples that are within the medi  an +/- a 24 DAC threshold are averaged and returned.
-		long read_median_filter_avg(byte times = 3, int threshold = 10000);
-
+		MassDataPoint* read_median_filter_avg(const byte times = 3, const int threshold = 10000);
+		void shiftAllIn();
+		bool wait_all_ready_retry(const int retries, const unsigned long delay_ms);
 };
 
 template <typename PacketType>

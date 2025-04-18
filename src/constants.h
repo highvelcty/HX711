@@ -8,10 +8,11 @@ const int WAIT_READY_RETRY_DELAY_MS = 10;
 
 enum ArduinoDigitalPins : const int {
     ARDUINO_HX711_SCK = 2,
+    ARDUINO_HX711_BASE_DOUT = 8,
 };
 
-inline int get_HX711_dout_pin(int channel){
-    return ARDUINO_HX711_SCK + channel + 1;
+inline int get_HX711_dout_pin(int sensor){
+    return ARDUINO_HX711_BASE_DOUT + sensor + 1;
 }
 
 enum Cmd: uint16_t {

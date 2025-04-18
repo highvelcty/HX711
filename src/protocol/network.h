@@ -19,15 +19,19 @@ PacketHdr* recv_packet();
 
 
 template <typename PacketType>
-void send_packet(PacketType& structure) {
+void send_packet(PacketType& structure, size_t packet_size = 0) {
     byte* ptr = (byte*)&structure;
     uint16_t checksum = 0;
 
-    for (uint16_t byte_idx = 0; byte_idx < sizeof(PacketType); ++byte_idx){
+    if (!packet_size){
+        packet_size = sizeof(PacketType);
+    }
+
+    for (uint16_t byte_idx = 0; byte_idx < packet_size; ++byte_idx){
         checksum += ptr[byte_idx];
     }
 
-    send_slip(ptr, sizeof(structure));
+    send_slip(ptr, packet_size);
     send_slip((byte*)&checksum, sizeof(checksum));
     send_slip_end();
 };

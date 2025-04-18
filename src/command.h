@@ -75,14 +75,12 @@ struct RespError : BaseResp {
 };
 
 // --- Cmd Responses
-struct RespReadMedianFilterAvg : RespFloat {
-    RespReadMedianFilterAvg() : RespFloat(MASS_DATAPOINT) {};
-};
-
-struct MassDataPoint : RespFloat {
-    MassDataPoint() : RespFloat(MASS_DATAPOINT)
+struct MassDataPoint : RespLong {
+    MassDataPoint() : RespLong(MASS_DATAPOINT) {};
     byte error_count;
-    byte reserved[3];
-}
+    byte ready : 1;
+    byte  reserved : 7;
+    byte reserved2[2];
+};
 
 #endif /* command_h */
