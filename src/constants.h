@@ -37,7 +37,7 @@ enum RespType: uint16_t {
     RESP_TYPE_LONG = 2,
     RESP_TYPE_FLOAT = 3,
     RESP_TYPE_DOUBLE = 4,
-    RESP_TYPE_READ_MEDIAN_FILTER_AVG = 5,
+    MASS_DATAPOINT = 5,
     RESP_TYPE_ERROR = 0xFFFF,
 };
 

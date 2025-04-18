@@ -3,21 +3,6 @@
 
 Growbies* growbies = new Growbies();
 
-template <typename T>
-
-bool check_and_respond_to_deserialization_underflow(const T& structure) {
-    if (slip_buf->buf_len() >= sizeof(structure)) {
-        return false;
-    }
-    else{
-        RespError resp;
-        resp.error = ERROR_CMD_DESERIALIZATION_BUFFER_UNDERFLOW;
-        send_packet(resp);
-        return true;
-    }
-
-}
-
 void Growbies::begin(byte channel, byte gain){
     HX711::begin(get_HX711_dout_pin(this->channel), ARDUINO_HX711_SCK, gain);
 }
@@ -29,7 +14,7 @@ void Growbies::execute(PacketHdr* packet_hdr) {
     }
     else if (packet_hdr->type == CMD_READ_MEDIAN_FILTER_AVG) {
         CmdReadMedianFilterAvg* cmd = (CmdReadMedianFilterAvg*)slip_buf->buf;
-        if (!check_and_respond_to_deserialization_underflow(*cmd)){
+        if (validate_packet(*cmd)) {
             RespLong resp;
             resp.data = this->read_median_filter_avg(cmd->times);
             if (resp.data == ERROR_HX711_NOT_READY){
@@ -44,7 +29,7 @@ void Growbies::execute(PacketHdr* packet_hdr) {
     }
     else if (packet_hdr->type == CMD_SET_GAIN) {
         CmdSetGain* cmd = (CmdSetGain*)slip_buf->buf;
-        if (!check_and_respond_to_deserialization_underflow(*cmd)){
+        if (validate_packet(*cmd)) {
             RespVoid resp;
             this->set_gain(cmd->gain);
             // The first read after setting the gain applies the gain. The value returned looks
@@ -55,7 +40,7 @@ void Growbies::execute(PacketHdr* packet_hdr) {
     }
     else if (packet_hdr->type == CMD_GET_UNITS) {
         CmdGetUnits* cmd = (CmdGetUnits*)slip_buf->buf;
-        if (!check_and_respond_to_deserialization_underflow(*cmd)){
+        if (validate_packet(*cmd)) {
             RespLong resp;
             resp.data = this->get_units(cmd->times);
             if (resp.data == ERROR_HX711_NOT_READY){
@@ -70,7 +55,7 @@ void Growbies::execute(PacketHdr* packet_hdr) {
     }
     else if (packet_hdr->type == CMD_TARE) {
         CmdTare* cmd = (CmdTare*)slip_buf->buf;
-        if (!check_and_respond_to_deserialization_underflow(*cmd)){
+        if (validate_packet(*cmd)) {
             RespVoid resp;
             this->tare(cmd->times);
             send_packet(resp);
@@ -78,7 +63,7 @@ void Growbies::execute(PacketHdr* packet_hdr) {
     }
     else if (packet_hdr->type == CMD_SET_SCALE) {
         CmdSetScale* cmd = (CmdSetScale*)slip_buf->buf;
-        if (!check_and_respond_to_deserialization_underflow(*cmd)){
+        if (validate_packet(*cmd)) {
             RespVoid resp;
             this->set_scale(cmd->scale);
             send_packet(resp);
@@ -86,25 +71,31 @@ void Growbies::execute(PacketHdr* packet_hdr) {
     }
     else if (packet_hdr->type == CMD_GET_SCALE) {
         CmdGetScale* cmd = (CmdGetScale*)slip_buf->buf;
-        if (!check_and_respond_to_deserialization_underflow(*cmd)){
+        if (validate_packet(*cmd)) {
             RespFloat resp;
             resp.data = this->get_scale();
             send_packet(resp);
          }
     }
     else if (packet_hdr->type == CMD_POWER_UP) {
-        RespVoid resp;
-        this->power_up();
-        send_packet(resp);
+        CmdPowerUp* cmd = (CmdPowerUp*)slip_buf->buf;
+        if (validate_packet(*cmd)) {
+            RespVoid resp;
+            this->power_up();
+            send_packet(resp);
+        }
     }
     else if (packet_hdr->type == CMD_POWER_DOWN) {
-        RespVoid resp;
-        this->power_down();
-        send_packet(resp);
+        CmdPowerDown* cmd = (CmdPowerDown*)slip_buf->buf;
+        if (validate_packet(*cmd)) {
+            RespVoid resp;
+            this->power_down();
+            send_packet(resp);
+        }
     }
     else if (packet_hdr->type == CMD_SET_CHANNEL) {
         CmdSetChannel* cmd = (CmdSetChannel*)slip_buf->buf;
-        if (!check_and_respond_to_deserialization_underflow(*cmd)){
+        if (validate_packet(*cmd)) {
             RespVoid resp;
             this->channel = cmd->channel;
             this->begin();
@@ -112,9 +103,12 @@ void Growbies::execute(PacketHdr* packet_hdr) {
          }
     }
     else if (packet_hdr->type == CMD_GET_CHANNEL) {
-        RespByte resp;
-        resp.data = this->channel;
-        send_packet(resp);
+        CmdGetChannel* cmd = (CmdGetChannel*)slip_buf->buf;
+        if (validate_packet(*cmd)) {
+            RespByte resp;
+            resp.data = this->channel;
+            send_packet(resp);
+        }
     }
     else{
         RespError resp;

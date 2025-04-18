@@ -18,12 +18,12 @@ struct PacketHdr {
 PacketHdr* recv_packet();
 
 
-template <typename T>
-void send_packet(T& structure) {
+template <typename PacketType>
+void send_packet(PacketType& structure) {
     byte* ptr = (byte*)&structure;
     uint16_t checksum = 0;
 
-    for (uint16_t byte_idx = 0; byte_idx < sizeof(T); ++byte_idx){
+    for (uint16_t byte_idx = 0; byte_idx < sizeof(PacketType); ++byte_idx){
         checksum += ptr[byte_idx];
     }
 
