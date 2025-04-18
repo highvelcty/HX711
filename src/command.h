@@ -76,7 +76,7 @@ struct RespError : BaseResp {
 
 // --- Cmd Responses
 struct MassDataPoint : RespLong {
-    MassDataPoint() : RespLong(MASS_DATAPOINT) {};
+    MassDataPoint() : RespLong(RESP_MASS_DATAPOINT) {};
     byte error_count;
     byte ready : 1;
     byte  reserved : 7;
