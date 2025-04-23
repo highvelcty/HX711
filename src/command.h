@@ -75,12 +75,16 @@ struct RespError : BaseResp {
 };
 
 // --- Cmd Responses
-struct MassDataPoint : RespLong {
-    MassDataPoint() : RespLong(RESP_MASS_DATAPOINT) {};
+struct MassDataPoint {
+    long mass;
     byte error_count;
     byte ready : 1;
     byte  reserved : 7;
     byte reserved2[2];
+};
+
+struct RespMassDataPoint : BaseResp {
+    RespMassDataPoint() : BaseResp(RESP_MASS_DATA_POINT) {};
 };
 
 #endif /* command_h */

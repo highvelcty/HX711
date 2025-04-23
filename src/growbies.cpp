@@ -1,4 +1,5 @@
 #include <util/atomic.h>
+#include <new> // Required for placement new
 
 #include "growbies.h"
 #include "utils/sort.h"
@@ -7,11 +8,11 @@
 Growbies* growbies = new Growbies();
 
 Growbies::Growbies(int sensor_count) : sensor_count(sensor_count) {
-    this->mass_data_points = (MassDataPoint*)malloc(sizeof(MassDataPoint) * this->sensor_count);
+    memset(this->outbuf, 0, this->outbuf_size);
 }
 
 Growbies::~Growbies() {
-    free(this->mass_data_points);
+    free(this->outbuf);
 }
 
 void Growbies::begin(byte channel, byte gain){
@@ -19,6 +20,8 @@ void Growbies::begin(byte channel, byte gain){
     for(int sensor = 0; sensor < this->sensor_count; ++sensor) {
         pinMode(get_HX711_dout_pin(sensor), INPUT_PULLUP);
     }
+
+    HX711::begin(3,2,128);
 }
 
 void Growbies::execute(PacketHdr* packet_hdr) {
@@ -29,10 +32,14 @@ void Growbies::execute(PacketHdr* packet_hdr) {
     else if (packet_hdr->type == CMD_READ_MEDIAN_FILTER_AVG) {
         CmdReadMedianFilterAvg* cmd = (CmdReadMedianFilterAvg*)slip_buf->buf;
         if (validate_packet(*cmd)) {
-            send_packet(*this->read_median_filter_avg(cmd->times),
-                sizeof(MassDataPoint) * this->sensor_count);
+            // This constructs at location
+            new (this->outbuf) RespMassDataPoint;
+            this->read_median_filter_avg(cmd->times);
+            send_packet(this->outbuf,
+                        sizeof(RespMassDataPoint) + (sizeof(MassDataPoint)*this->sensor_count));
          }
     }
+
     else if (packet_hdr->type == CMD_SET_GAIN) {
         CmdSetGain* cmd = (CmdSetGain*)slip_buf->buf;
         if (validate_packet(*cmd)) {
@@ -123,41 +130,46 @@ void Growbies::execute(PacketHdr* packet_hdr) {
     }
 }
 
-MassDataPoint* Growbies::read_all(){
-    if (!wait_all_ready_retry(WAIT_READY_RETRIES, WAIT_READY_RETRY_DELAY_MS)){
-        return this->mass_data_points;
+bool Growbies::read_all(){
+    if (!this->wait_all_ready_retry(WAIT_READY_RETRIES, WAIT_READY_RETRY_DELAY_MS)){
+        return false;
     }
 
-    this->read_all();
-    return this->mass_data_points;
+    shiftAllIn();
+    return true;
 }
 
-MassDataPoint* Growbies::read_median_filter_avg(const byte times, const int threshold) {
+void Growbies::read_median_filter_avg(const byte times, const int threshold) {
     // This method filters serial bit errors often caused by timing.
     long median;
     byte middle;
     long sample;
     int sensor;
     byte sensor_sample;
+    long sum;
+    int sum_count;
 
-    bool ready = true;
     long sensor_samples[this->sensor_count][times] = {0};
-    long sum = 0;
-    int sum_count = 0;
+
+
+    // Initialize
+    memset(this->mass_data_points, 0, sizeof(MassDataPoint) * this->sensor_count);
 
 	// Read samples
 	for (sample = 0; sample < times; ++sample) {
-        this->read_all();
-        for (sensor_sample = 0; sensor_sample < this->sensor_count; ++sensor_sample){
-            sensor_samples[sensor][sensor_sample] = this->mass_data_points[sensor_sample].data;
-            ready &= this->mass_data_points[sensor].ready;
+        if (!this->read_all()){
+            return;
+        }
+        for (sensor = 0; sensor < this->sensor_count; ++sensor){
+            sensor_samples[sensor][sample] = this->mass_data_points[sensor].mass;
         }
 	}
-	if (!ready){
-	    return this->mass_data_points;
-	}
 
+    // Filter and average
     for (sensor = 0; sensor < this->sensor_count; ++sensor){
+        sum = 0;
+        sum_count = 0;
+
         // Sort
         insertion_sort(sensor_samples[sensor], times);
 
@@ -183,71 +195,79 @@ MassDataPoint* Growbies::read_median_filter_avg(const byte times, const int thre
                 ++this->mass_data_points[sensor].error_count;
             }
         }
-        this->mass_data_points[sensor].data = sum / sum_count;
+        this->mass_data_points[sensor].mass = sum / sum_count;
     }
-
-    return this->mass_data_points;
 }
 
 void Growbies::shiftAllIn() {
-    int sensor;
-    uint8_t data_in = 0;
+    uint32_t a_bit;
+    uint8_t ii;
+    uint8_t sensor;
+    uint8_t pind;
 
-    // Initialize output data
-    for (sensor = 0; sensor < this->sensor_count; ++ sensor){
-        this->mass_data_points[sensor].data = 0;
+    for (sensor = 0; sensor < this->sensor_count; ++sensor) {
+        this->mass_data_points[sensor].mass = 0;
     }
 
     ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {
-        // For each bit, toggle the serial clock line to high, read all sensor data pins, toggle the
-        // serial clock line to low.
-        for(int ii = 0; ii < HX711_DAC_BITS; ++ii) {
+        delayMicroseconds(HX711_READY_TO_SCK_RISE_MICROSECONDS);
+        for (ii = 0; ii < HX711_DAC_BITS; ++ii) {
+            // Read in a byte, most significant bit first
             digitalWrite(ARDUINO_HX711_SCK, HIGH);
-            delayMicroseconds(SCK_TOGGLE_DELAY_MICROSECONDS);
-            // Read pins 8-13
-            data_in = PINB;
-            digitalWrite(ARDUINO_HX711_SCK, LOW);
-            delayMicroseconds(SCK_TOGGLE_DELAY_MICROSECONDS);
 
+            // This is a time critical block
+            delayMicroseconds(HX711_SCK_RISE_TO_DOUT_READY_MICROSECONDS);
+            // Read pins 0-7
+            pind = PIND;
+            delayMicroseconds(HX711_SCK_HIGH_MICROSECONDS);
+            digitalWrite(ARDUINO_HX711_SCK, LOW);
+
+            // This time intensive task needs to happen after pulling SCK low so as to not perturb
+            // time sensitive section when SCK is high.
             for (sensor = 0; sensor < this->sensor_count; ++sensor) {
-                this->mass_data_points[sensor].data |= ((data_in & (1 << sensor)) << ii);
+                a_bit = (bool)(pind & (1 << get_HX711_dout_pin(sensor)));
+                this->mass_data_points[sensor].mass |= (a_bit << (HX711_DAC_BITS - 1 - ii));
             }
+
+            // Not enough delay here causes serial errors
+            delayMicroseconds(HX711_SCK_LOW_MICROSECONDS);
         }
 
-        // Set the channel and the gain factor for the next reading using the clock pin.
-	    for (unsigned int i = 0; i < GAIN; i++) {
-	    	digitalWrite(ARDUINO_HX711_SCK, HIGH);
-	    	delayMicroseconds(SCK_TOGGLE_DELAY_MICROSECONDS);
-	    	digitalWrite(ARDUINO_HX711_SCK, LOW);
-	    	delayMicroseconds(SCK_TOGGLE_DELAY_MICROSECONDS);
-	    }
+        // Set the gain for the next read.
+        for (ii = 0; ii < GAIN; ++ii) {
+            digitalWrite(ARDUINO_HX711_SCK, HIGH);
+            delayMicroseconds(HX711_SCK_HIGH_MICROSECONDS);
+            digitalWrite(ARDUINO_HX711_SCK, LOW);
+            delayMicroseconds(HX711_SCK_LOW_MICROSECONDS);
+        }
     }
 
-    // Pad with 1's to retain negativity when converting from a 24-bit sign int to a 32-bit
-    // signed int
-    for (int sensor = 0; sensor < this->sensor_count; ++sensor){
-        if (this->mass_data_points[sensor].data & (HX711_DAC_BITS - 1)){
-            this->mass_data_points[sensor].data |= ((long)0xFF << HX711_DAC_BITS);
+    for (sensor = 0; sensor < this->sensor_count; ++sensor) {
+        if (this->mass_data_points[sensor].mass & (1UL << (HX711_DAC_BITS - 1))) {
+            this->mass_data_points[sensor].mass |= (0xFFUL << HX711_DAC_BITS);
         }
     }
 }
 
+
 bool Growbies::wait_all_ready_retry(const int retries, const unsigned long delay_ms)
 {
-	bool all_ready;
+	bool all_ready = true;
+	bool ready;
 	int sensor;
-	byte ready_pins = 0;
+	byte pind;
 	int retry_count = 0;
 
 	do {
         // Check for readiness from all sensors
-        // Read pins 8-13
-        ready_pins = PINB;
+        // Read pins 0-7
+        pind = PIND;
         all_ready = true;
 	    for (sensor = 0; sensor < this->sensor_count; ++sensor) {
-	        // The sensor is not ready when the data line is high.
-	        this->mass_data_points[sensor].ready = (ready_pins & (1 << sensor));
-	        all_ready &= this->mass_data_points[sensor].ready;
+	        // The sensor is ready when the data line is low.
+	        ready = (bool)((pind & (1 << get_HX711_dout_pin(sensor)))) == LOW;
+	        this->mass_data_points[sensor].ready = ready;
+	        all_ready &= ready;
         }
 
         if (!all_ready){

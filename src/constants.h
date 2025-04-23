@@ -1,6 +1,8 @@
 #ifndef constants_h
 #define constants_h
 
+const int BITS_PER_BYTE = 8;
+
 const int CHAN_SELECT_DELAY_MS = 1;
 const int MAIN_POLLING_LOOP_INTERVAL_MS = 1;
 const int WAIT_READY_RETRIES = 100;
@@ -8,11 +10,11 @@ const int WAIT_READY_RETRY_DELAY_MS = 10;
 
 enum ArduinoDigitalPins : const int {
     ARDUINO_HX711_SCK = 2,
-    ARDUINO_HX711_BASE_DOUT = 8,
+    ARDUINO_HX711_BASE_DOUT = 3,
 };
 
 inline int get_HX711_dout_pin(int sensor){
-    return ARDUINO_HX711_BASE_DOUT + sensor + 1;
+    return ARDUINO_HX711_BASE_DOUT + sensor;
 }
 
 enum Cmd: uint16_t {

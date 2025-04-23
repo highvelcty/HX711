@@ -6,6 +6,17 @@
 #include "constants.h"
 #include "protocol/network.h"
 
+enum HX711SerialDelay {
+    HX711_READY_TO_SCK_RISE_MICROSECONDS = 1,
+    HX711_SCK_RISE_TO_DOUT_READY_MICROSECONDS = 1,
+    HX711_SCK_HIGH_MICROSECONDS = 1,
+
+    // 2025_04_22: From experimentation on the arduino mini 3v3, this is critical to reliable
+    // transfer. PIND did not work well when set to 3 or less and digitalRread did not work well
+    // when set to 6 or less.
+    HX711_SCK_LOW_MICROSECONDS = 10
+};
+
 class Growbies : protected HX711 {
     public:
         const int sensor_count;
@@ -18,12 +29,17 @@ class Growbies : protected HX711 {
         void begin(byte channel = 0, byte gain = 128);
 
     private:
-        MassDataPoint* mass_data_points;
+        // Output buffer and symbol mapping
+        const int static outbuf_size = 512;
+        byte outbuf[outbuf_size];
+        MassDataPoint* mass_data_points = (MassDataPoint*)&outbuf[sizeof(PacketHdr)];
+
         byte channel = 0;
-		MassDataPoint* read_all();
+		bool read_all();
 		// Reads data from the chip the requested number of times. The median is found and then all
 		// samples that are within the medi  an +/- a 24 DAC threshold are averaged and returned.
-		MassDataPoint* read_median_filter_avg(const byte times = 3, const int threshold = 10000);
+		void read_median_filter_avg(const byte times = 3,
+		                                          const int threshold = 10000);
 		void shiftAllIn();
 		bool wait_all_ready_retry(const int retries, const unsigned long delay_ms);
 };
