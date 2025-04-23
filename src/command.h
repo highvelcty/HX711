@@ -33,13 +33,6 @@ struct CmdPowerUp : BaseCmd {};
 
 struct CmdPowerDown : BaseCmd {};
 
-struct CmdSetChannel : BaseCmd {
-    uint8_t channel;
-};
-
-struct CmdGetChannel : BaseCmd {};
-
-
 // --- Base Responses
 struct BaseResp : PacketHdr {
     BaseResp(RespType resp_type) : PacketHdr(resp_type) {};

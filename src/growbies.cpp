@@ -7,21 +7,29 @@
 
 Growbies* growbies = new Growbies();
 
-Growbies::Growbies(int sensor_count) : sensor_count(sensor_count) {
+Growbies::Growbies(int sensor_count, byte gain) : sensor_count(sensor_count), gain(gain){
+    this->outbuf = new byte[this->outbuf_size];
     memset(this->outbuf, 0, this->outbuf_size);
+    this->mass_data_points = (MassDataPoint*)&outbuf[sizeof(PacketHdr)];
+
+    this->offset = new long[this->sensor_count];
+    this->scale = new float[this->sensor_count];
+    this->threshold = new uint32_t[this->sensor_count];
+    this->set_threshold(this->default_threshold);
 }
 
 Growbies::~Growbies() {
-    free(this->outbuf);
+    delete[] this->outbuf;
+    delete[] this->offset;
+    delete[] this->scale;
+    delete[] this->threshold;
 }
 
-void Growbies::begin(byte channel, byte gain){
+void Growbies::begin(){
     pinMode(ARDUINO_HX711_SCK, OUTPUT);
     for(int sensor = 0; sensor < this->sensor_count; ++sensor) {
         pinMode(get_HX711_dout_pin(sensor), INPUT_PULLUP);
     }
-
-    HX711::begin(3,2,128);
 }
 
 void Growbies::execute(PacketHdr* packet_hdr) {
@@ -35,37 +43,37 @@ void Growbies::execute(PacketHdr* packet_hdr) {
             // This constructs at location
             new (this->outbuf) RespMassDataPoint;
             this->read_median_filter_avg(cmd->times);
-            send_packet(this->outbuf,
+            send_packet(*this->outbuf,
                         sizeof(RespMassDataPoint) + (sizeof(MassDataPoint)*this->sensor_count));
          }
     }
 
-    else if (packet_hdr->type == CMD_SET_GAIN) {
-        CmdSetGain* cmd = (CmdSetGain*)slip_buf->buf;
-        if (validate_packet(*cmd)) {
-            RespVoid resp;
-            this->set_gain(cmd->gain);
-            // The first read after setting the gain applies the gain. The value returned looks
-            // off from experimentation and is discarded.
-            this->read();
-            send_packet(resp);
-         }
-    }
-    else if (packet_hdr->type == CMD_GET_UNITS) {
-        CmdGetUnits* cmd = (CmdGetUnits*)slip_buf->buf;
-        if (validate_packet(*cmd)) {
-            RespLong resp;
-            resp.data = this->get_units(cmd->times);
-            if (resp.data == ERROR_HX711_NOT_READY){
-                RespError error_response;
-                error_response.error = (Error)resp.data;
-                send_packet(error_response);
-            }
-            else {
-                send_packet(resp);
-            }
-        }
-    }
+//    else if (packet_hdr->type == CMD_SET_GAIN) {
+//        CmdSetGain* cmd = (CmdSetGain*)slip_buf->buf;
+//        if (validate_packet(*cmd)) {
+//            RespVoid resp;
+//            this->set_gain(cmd->gain);
+//            // The first read after setting the gain applies the gain. The value returned looks
+//            // off from experimentation and is discarded.
+//            this->read();
+//            send_packet(resp);
+//         }
+//    }
+//    else if (packet_hdr->type == CMD_GET_UNITS) {
+//        CmdGetUnits* cmd = (CmdGetUnits*)slip_buf->buf;
+//        if (validate_packet(*cmd)) {
+//            RespLong resp;
+//            resp.data = this->get_units(cmd->times);
+//            if (resp.data == ERROR_HX711_NOT_READY){
+//                RespError error_response;
+//                error_response.error = (Error)resp.data;
+//                send_packet(error_response);
+//            }
+//            else {
+//                send_packet(resp);
+//            }
+//        }
+//    }
     else if (packet_hdr->type == CMD_TARE) {
         CmdTare* cmd = (CmdTare*)slip_buf->buf;
         if (validate_packet(*cmd)) {
@@ -74,55 +82,38 @@ void Growbies::execute(PacketHdr* packet_hdr) {
             send_packet(resp);
          }
     }
-    else if (packet_hdr->type == CMD_SET_SCALE) {
-        CmdSetScale* cmd = (CmdSetScale*)slip_buf->buf;
-        if (validate_packet(*cmd)) {
-            RespVoid resp;
-            this->set_scale(cmd->scale);
-            send_packet(resp);
-         }
-    }
-    else if (packet_hdr->type == CMD_GET_SCALE) {
-        CmdGetScale* cmd = (CmdGetScale*)slip_buf->buf;
-        if (validate_packet(*cmd)) {
-            RespFloat resp;
-            resp.data = this->get_scale();
-            send_packet(resp);
-         }
-    }
-    else if (packet_hdr->type == CMD_POWER_UP) {
-        CmdPowerUp* cmd = (CmdPowerUp*)slip_buf->buf;
-        if (validate_packet(*cmd)) {
-            RespVoid resp;
-            this->power_up();
-            send_packet(resp);
-        }
-    }
-    else if (packet_hdr->type == CMD_POWER_DOWN) {
-        CmdPowerDown* cmd = (CmdPowerDown*)slip_buf->buf;
-        if (validate_packet(*cmd)) {
-            RespVoid resp;
-            this->power_down();
-            send_packet(resp);
-        }
-    }
-    else if (packet_hdr->type == CMD_SET_CHANNEL) {
-        CmdSetChannel* cmd = (CmdSetChannel*)slip_buf->buf;
-        if (validate_packet(*cmd)) {
-            RespVoid resp;
-            this->channel = cmd->channel;
-            this->begin();
-            send_packet(resp);
-         }
-    }
-    else if (packet_hdr->type == CMD_GET_CHANNEL) {
-        CmdGetChannel* cmd = (CmdGetChannel*)slip_buf->buf;
-        if (validate_packet(*cmd)) {
-            RespByte resp;
-            resp.data = this->channel;
-            send_packet(resp);
-        }
-    }
+//    else if (packet_hdr->type == CMD_SET_SCALE) {
+//        CmdSetScale* cmd = (CmdSetScale*)slip_buf->buf;
+//        if (validate_packet(*cmd)) {
+//            RespVoid resp;
+//            this->set_scale(cmd->scale);
+//            send_packet(resp);
+//         }
+//    }
+//    else if (packet_hdr->type == CMD_GET_SCALE) {
+//        CmdGetScale* cmd = (CmdGetScale*)slip_buf->buf;
+//        if (validate_packet(*cmd)) {
+//            RespFloat resp;
+//            resp.data = this->get_scale();
+//            send_packet(resp);
+//         }
+//    }
+//    else if (packet_hdr->type == CMD_POWER_UP) {
+//        CmdPowerUp* cmd = (CmdPowerUp*)slip_buf->buf;
+//        if (validate_packet(*cmd)) {
+//            RespVoid resp;
+//            this->power_up();
+//            send_packet(resp);
+//        }
+//    }
+//    else if (packet_hdr->type == CMD_POWER_DOWN) {
+//        CmdPowerDown* cmd = (CmdPowerDown*)slip_buf->buf;
+//        if (validate_packet(*cmd)) {
+//            RespVoid resp;
+//            this->power_down();
+//            send_packet(resp);
+//        }
+//    }
     else{
         RespError resp;
         resp.error = ERROR_UNRECOGNIZED_COMMAND;
@@ -130,16 +121,16 @@ void Growbies::execute(PacketHdr* packet_hdr) {
     }
 }
 
-bool Growbies::read_all(){
+bool Growbies::read(){
     if (!this->wait_all_ready_retry(WAIT_READY_RETRIES, WAIT_READY_RETRY_DELAY_MS)){
         return false;
     }
 
-    shiftAllIn();
+    shift_all_in();
     return true;
 }
 
-void Growbies::read_median_filter_avg(const byte times, const int threshold) {
+void Growbies::read_median_filter_avg(const byte times) {
     // This method filters serial bit errors often caused by timing.
     long median;
     byte middle;
@@ -157,7 +148,7 @@ void Growbies::read_median_filter_avg(const byte times, const int threshold) {
 
 	// Read samples
 	for (sample = 0; sample < times; ++sample) {
-        if (!this->read_all()){
+        if (!this->read()){
             return;
         }
         for (sensor = 0; sensor < this->sensor_count; ++sensor){
@@ -187,7 +178,7 @@ void Growbies::read_median_filter_avg(const byte times, const int threshold) {
         // Average and return samples that fall within a threshold
         for (sensor_sample = 0; sensor_sample < times; ++sensor_sample) {
             sample = sensor_samples[sensor][sensor_sample];
-            if (abs(median - sample) <= threshold) {
+            if (abs(median - sample) <= threshold[sensor]) {
                 sum += sample;
                 ++sum_count;
             }
@@ -199,7 +190,39 @@ void Growbies::read_median_filter_avg(const byte times, const int threshold) {
     }
 }
 
-void Growbies::shiftAllIn() {
+void Growbies::read_with_units(const byte times) {
+    this->read_median_filter_avg(times);
+    for (int sensor = 0; sensor < this->sensor_count; ++sensor) {
+        this->mass_data_points[sensor].mass = \
+            (this->mass_data_points[sensor].mass - this->offset[sensor]) / this->scale[sensor];
+    }
+}
+
+void Growbies::set_offset(long* offset) {
+    for (int sensor = 0; sensor < this->sensor_count; ++sensor) {
+        this->offset[sensor] = offset[sensor];
+    }
+}
+
+void Growbies::set_scale(float* scale) {
+    for (int sensor = 0; sensor < this->sensor_count; ++sensor) {
+        this->scale[sensor] = offset[sensor];
+    }
+}
+
+void Growbies::set_threshold(uint32_t* threshold){
+    for (int sensor = 0; sensor < this->sensor_count; ++sensor) {
+        this->threshold[sensor] = threshold[sensor];
+    }
+}
+
+void Growbies::set_threshold(uint32_t threshold){
+    for (int sensor = 0; sensor < this->sensor_count; ++sensor) {
+        this->threshold[sensor] = threshold;
+    }
+}
+
+void Growbies::shift_all_in() {
     uint32_t a_bit;
     uint8_t ii;
     uint8_t sensor;
@@ -234,7 +257,7 @@ void Growbies::shiftAllIn() {
         }
 
         // Set the gain for the next read.
-        for (ii = 0; ii < GAIN; ++ii) {
+        for (ii = 0; ii < this->gain; ++ii) {
             digitalWrite(ARDUINO_HX711_SCK, HIGH);
             delayMicroseconds(HX711_SCK_HIGH_MICROSECONDS);
             digitalWrite(ARDUINO_HX711_SCK, LOW);
@@ -247,6 +270,16 @@ void Growbies::shiftAllIn() {
             this->mass_data_points[sensor].mass |= (0xFFUL << HX711_DAC_BITS);
         }
     }
+}
+
+void Growbies::tare(const byte times) {
+    read_median_filter_avg(times);
+    long offset[this->sensor_count];
+    for (int sensor = 0; sensor < this->sensor_count; ++sensor) {
+        offset[sensor] = this->mass_data_points[sensor].mass;
+    }
+
+    this->set_offset(offset);
 }
 
 

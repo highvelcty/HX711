@@ -16,7 +16,6 @@
 #include "WProgram.h"
 #endif
 
-const int HX711_DAC_BITS = 24;
 const int SCK_TOGGLE_DELAY_MICROSECONDS = 1;
 
 class HX711

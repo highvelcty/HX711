@@ -30,8 +30,6 @@ enum Cmd: uint16_t {
     CMD_GET_OFFSET = 9,
     CMD_POWER_DOWN = 10,
     CMD_POWER_UP = 11,
-    CMD_SET_CHANNEL = 12,
-    CMD_GET_CHANNEL = 13,
 };
 
 enum RespType: uint16_t {

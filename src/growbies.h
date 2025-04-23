@@ -1,10 +1,11 @@
 #ifndef growbies_h
 #define growbies_h
 
-#include "HX711.h"
 #include "command.h"
 #include "constants.h"
 #include "protocol/network.h"
+
+const int HX711_DAC_BITS = 24;
 
 enum HX711SerialDelay {
     HX711_READY_TO_SCK_RISE_MICROSECONDS = 1,
@@ -17,30 +18,42 @@ enum HX711SerialDelay {
     HX711_SCK_LOW_MICROSECONDS = 10
 };
 
-class Growbies : protected HX711 {
+class Growbies {
     public:
         const int sensor_count;
+        byte gain;
 
 
-        Growbies(int sensor_count = 4);
+        Growbies(int sensor_count = 4, byte gain = 128);
         ~Growbies();
 
         void execute(PacketHdr* packet_hdr);
-        void begin(byte channel = 0, byte gain = 128);
+        void begin();
 
     private:
         // Output buffer and symbol mapping
         const int static outbuf_size = 512;
-        byte outbuf[outbuf_size];
-        MassDataPoint* mass_data_points = (MassDataPoint*)&outbuf[sizeof(PacketHdr)];
+        byte* outbuf;
+        MassDataPoint* mass_data_points;
 
-        byte channel = 0;
-		bool read_all();
+        long* offset;
+        float* scale;
+        const uint32_t default_threshold = 10000;
+        uint32_t* threshold;
+
+		const byte static default_times = 3;
+		bool read();
+
 		// Reads data from the chip the requested number of times. The median is found and then all
-		// samples that are within the medi  an +/- a 24 DAC threshold are averaged and returned.
-		void read_median_filter_avg(const byte times = 3,
-		                                          const int threshold = 10000);
-		void shiftAllIn();
+		// samples that are within the median +/- a 24 DAC threshold are averaged and returned.
+		void read_median_filter_avg(const byte times = default_times);
+		void read_with_units(const byte times = default_times);
+		void set_offset(long* offset);
+		void set_scale(float* scale);
+		void set_threshold(uint32_t* threshold);
+		void set_threshold(uint32_t threshold);
+		void shift_all_in();
+		void tare(const byte times = default_times);
 		bool wait_all_ready_retry(const int retries, const unsigned long delay_ms);
 };
 
